@@ -3,7 +3,7 @@ from torch.autograd import Variable
 import numpy as np
 import torch
 from BASIC_LIST.basic import groupby
-
+import math
 
 def groupby(seq, minibatch=10, key='mini'):
 	_len = len(seq)
@@ -24,12 +24,12 @@ def groupby(seq, minibatch=10, key='mini'):
 
 
 class loader:
-	def __init__(self, X_path, Y_path, minibatch=1000):
+	def __init__(self, X, Y, minibatch=1000):
 		end = default_timer()
-		self.X = np.load(X_path).astype('float32')
-		self.Y = (no.load(Y_path)/255).astype('int32')
-		self.X, self.Y = self.X.transpose([2, 0, 1]), self.Y.transpose([2, 0, 1])
-		self.X = np.expand_dims(self.X, 1)
+		self.X = X.astype('float32')
+		self.Y = (Y/255).astype('int32')
+		# self.X, self.Y = self.X.transpose([2, 0, 1]), self.Y.transpose([2, 0, 1])
+		# self.X = np.expand_dims(self.X, 1)
 		print("loading time: ", default_timer()-end)
 		self.minibatch = minibatch
 
@@ -42,9 +42,10 @@ class loader:
 
 
 
-def train(model, loader, after_fun=None, correct_fun=None, num_epoch=1000, device=3, savePath="./save/"):
+def train(model, loader, after_fun=None, correct_fun=None, num_epoch=1000, device=3, savePath="./save/", loss=None):
 	optimizer = torch.optim.Adam(model.parameters(), lr=0.0001)
-	loss = torch.nn.CrossEntropyLoss()
+	if loss is None:
+		loss = torch.nn.CrossEntropyLoss()
 
 	if device is not None:
 		loss.cuda(device)
@@ -53,11 +54,13 @@ def train(model, loader, after_fun=None, correct_fun=None, num_epoch=1000, devic
 	end = default_timer()
 	for epoch in range(num_epoch):
 		correct = 0
+		overlap = 0 
+		union = 0
 		_len = 0
 		l = 0
 		count = 0
 		for index, (X, Y) in enumerate(loader.get()):
-			X, Y = Variable(torch.from_numpy(X)), Variable(torch.from_numpy(Y).long())
+			X, Y = Variable(torch.from_numpy(X)), Variable(torch.from_numpy(Y).long().squeeze())
 			if device is not None:
 				X = X.cuda(device)
 				Y = Y.cuda(device)
@@ -66,6 +69,7 @@ def train(model, loader, after_fun=None, correct_fun=None, num_epoch=1000, devic
 				R = model(X)
 			else:
 				R = after_fun(*model(X))
+
 			L = loss(R, Y)
 			optimizer.zero_grad()
 			L.backward()
@@ -73,10 +77,19 @@ def train(model, loader, after_fun=None, correct_fun=None, num_epoch=1000, devic
 
 
 			pred = R.data.max(1)[1]
-			correct += pred.eq(Y.data).sum()
-			_len = _len+Y.data.shape[0]
+			pred_sum, label_sum, overlap_sum = (pred==1).sum(), (Y==1).sum(), (pred*Y==1).sum()
+
+			union_sum = pred_sum+label_sum-overlap_sum
+
+			# correct += pred.eq(Y.data).sum()
+			# _len = _len+Y.data.shape[0]
+			overlap = overlap+overlap_sum.data.item()
+			union = union+union_sum.data.item()
 			l = l+L.data.item()
 			count = count+1
+		
+		_loss = l/count
+		_accuracy = overlap/union
 
 
 		###
@@ -87,11 +100,12 @@ def train(model, loader, after_fun=None, correct_fun=None, num_epoch=1000, devic
 			torch.save(state, savePath+str(epoch).zfill(6)+".pth.tar")
 
 
-		if correct_fun is None:
-			correct = 100. * correct / _len
-		else:
-			correct = correct_fun(correct, _len)
+		# if correct_fun is None:
+		# 	correct = 100. * correct / _len
+		# else:
+		# 	correct = correct_fun(correct, _len)
+
 		_loss = l/count
-		string = "epoch: {}, accuracy: {}, loss: {}, time: {}".format(epoch, correct, _loss, default_timer()-end)
+		string = "epoch: {}, accuracy: {}, loss: {}, time: {}".format(epoch, _accuracy, _loss, default_timer()-end)
 		print(string)
 		end = default_timer()
