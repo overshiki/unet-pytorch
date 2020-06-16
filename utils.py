@@ -1,8 +1,6 @@
 from timeit import default_timer
-from torch.autograd import Variable
 import numpy as np
 import torch
-from BASIC_LIST.basic import groupby
 import math
 
 def groupby(seq, minibatch=10, key='mini'):
@@ -60,7 +58,7 @@ def train(model, loader, after_fun=None, correct_fun=None, num_epoch=1000, devic
 		l = 0
 		count = 0
 		for index, (X, Y) in enumerate(loader.get()):
-			X, Y = Variable(torch.from_numpy(X)), Variable(torch.from_numpy(Y).long().squeeze())
+			X, Y = torch.from_numpy(X), torch.from_numpy(Y).long().squeeze()
 			if device is not None:
 				X = X.cuda(device)
 				Y = Y.cuda(device)
